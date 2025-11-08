@@ -1,0 +1,13 @@
+[project]
+name = "bitrl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.121.0",
+    "fastapi-cli>=0.0.14",
+    "gymnasium>=1.2.2",
+    "loguru>=0.7.3",
+    "six>=1.17.0",
+]

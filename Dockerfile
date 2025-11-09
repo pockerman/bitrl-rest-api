@@ -33,8 +33,6 @@ COPY . /app
 # Expose FastAPI port
 EXPOSE 8001
 
-#ENV PATH="/app/.venv/bin:$PATH"
-#ENV PATH="/root/.uv/bin:$PATH"
 
 # Start FastAPI server with uvicorn
 CMD ["uv", "run", "fastapi", "run", "main.py", "--host", "0.0.0.0", "--port", "8001"]

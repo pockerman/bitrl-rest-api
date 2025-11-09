@@ -1,181 +1,141 @@
-import gymnasium as gym
+import sys
 from typing import Any
 from fastapi import APIRouter, Body, status
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from loguru import logger
 from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.gym_env_manager import GymEnvManager
 
 frozenlake_router = APIRouter(prefix="/gymnasium/frozen-lake-env", tags=["frozen-lake-env"])
 
 ENV_NAME = "FrozenLake"
 
-# the environments to create
-envs = {
-    0: None
-}
+# the manager for the environments to create
+manager = GymEnvManager(verbose=True)
 
 
-@frozenlake_router.get("/is-alive")
-async def is_alive(cidx: int) -> JSONResponse:
-    global envs
+@frozenlake_router.get("/{idx}/is-alive")
+async def is_alive(idx: int) -> JSONResponse:
+    is_alive_ = manager.is_alive(idx=idx)
 
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is None:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": False})
-        else:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": True})
-    else:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                            content={"message": f"Environment {cidx} has not been created"})
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"result": is_alive_})
 
 
-@frozenlake_router.post("/close")
-async def close(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
-        if env is not None:
-            env.close()
-            envs[cidx] = None
-            logger.info(f'Closed environment {ENV_NAME} and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"message": "Environment is closed"})
+@frozenlake_router.post("/{idx}/close")
+async def close(idx: int) -> JSONResponse:
+    closed = await manager.close(idx=idx)
+
+    if closed:
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"message": "OK"})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                        content={"message": f"Environment {cidx} has not been created"})
+                        content={"message": "FAILED"})
 
 
-@frozenlake_router.post("/make")
-async def make(version: str = Body(default='v1'),
-               cidx: int = Body(...),
+@frozenlake_router.post("/{idx}/make")
+async def make(idx: int,
+               version: str = Body(default='v1'),
                options: dict[str, Any] = Body(default={"map_name": "4x4",
                                                        "is_slippery": True,
                                                        "max_episode_steps": 500})
                ) -> JSONResponse:
-
-    global envs
-
     map_name = options.get("map_name", "4x4")
     is_slippery = options.get("is_slippery", True)
     max_episode_steps = options.get("max_episode_steps", 500)
-    env_tag = f"FrozenLake-{version}"
-    if cidx in envs:
-        env = envs[cidx]
+    env_type = f"{ENV_NAME}-{version}"
 
-        if env is not None:
-            env.close()
-
-        try:
-            env = gym.make(id=env_tag,
-                           map_name=map_name, is_slippery=is_slippery,
-                           max_episode_steps=max_episode_steps)
-            envs[cidx] = env
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-    else:
-        try:
-            env = gym.make(id=env_tag,
-                           map_name=map_name, is_slippery=is_slippery,
-                           max_episode_steps=max_episode_steps)
-            envs[cidx] = env
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-
-    logger.info(f'Created environment  {ENV_NAME} and index {cidx}')
+    await manager.make(idx=idx, env_name=env_type,
+                       max_episode_steps=max_episode_steps,
+                       map_name=map_name,
+                       is_slippery=is_slippery)
+    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"result": True})
 
 
-@frozenlake_router.post("/reset")
-async def reset(seed: int = Body(default=42), cidx: int = Body(...),
+@frozenlake_router.post("/{idx}/reset")
+async def reset(idx: int,
+                seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
     :return:
     """
 
-    global envs
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
-    if cidx in envs:
-        env = envs[cidx]
+    try:
+        reset_step = await manager.reset(idx=idx, seed=seed)
 
-        if env is not None:
-            observation, info = envs[cidx].reset(seed=seed)
+        observation = reset_step.observation
 
-            step = TimeStep(observation=observation,
-                            reward=0.0,
-                            step_type=TimeStepType.FIRST,
-                            info=info,
-                            discount=1.0)
-            logger.info(f'Reset environment {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
+        step_ = TimeStep(observation=observation,
+                         reward=0.0,
+                         step_type=TimeStepType.FIRST,
+                         info=reset_step.info,
+                         discount=1.0)
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": "Environment FrozenLake is not initialized."
-                                           " Have you called make()?"})
-
-
-@frozenlake_router.post("/step")
-async def step(action: int = Body(...), cidx: int = Body(...)) -> JSONResponse:
-    global envs
-
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is not None:
-            observation, reward, terminated, truncated, info = envs[cidx].step(action)
-
-            step_type = TimeStepType.MID
-            if terminated:
-                step_type = TimeStepType.LAST
-
-            if info is not None:
-                info['truncated'] = truncated
-
-            step = TimeStep(observation=observation,
-                            reward=reward,
-                            step_type=step_type,
-                            info=info,
-                            discount=1.0)
-            logger.info(f'Step in environment {ENV_NAME} and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
-
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": "Environment FrozenLake is not initialized. Have you called make()?"})
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"time_step": step_.model_dump()})
+    except Exception as e:
+        exception = sys.exc_info()
+        logger.opt(exception=exception).info("Logging exception traceback")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": f"Environment {ENV_NAME} is not initialized."
+                                               " Have you called make()?"})
 
 
-@frozenlake_router.get("/dynamics")
-async def get_dynamics(cidx: int, stateId: int, actionId: int = None) -> JSONResponse:
-    global envs
+@frozenlake_router.post("/{idx}/step")
+async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-    if cidx in envs:
-        env = envs[cidx]
-        if env is not None:
+    step_result = await manager.step(idx=idx, action=action)
 
-            if actionId is None or actionId < 0:
-                state_dyns = env.P[stateId]
-                return JSONResponse(status_code=status.HTTP_201_CREATED,
-                                    content={"dynamics": state_dyns})
-            else:
-                dynamics = envs[cidx].P[stateId][actionId]
-                return JSONResponse(status_code=status.HTTP_200_OK,
-                                    content={"dynamics": dynamics})
+    step_type = TimeStepType.MID
+    if step_result.terminated:
+        step_type = TimeStepType.LAST
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": "Environment FrozenLake is not initialized. Have you called make()?"})
+    info = step_result.info
+    if info is not None:
+        info['truncated'] = step_result.truncated
 
+    step_ = TimeStep(observation=step_result.observation,
+                     reward=step_result.reward,
+                     step_type=step_type,
+                     info=info,
+                     discount=1.0)
 
-@frozenlake_router.post("/sync")
-async def sync(cidx: int = Body(...),
-               options: dict[str, Any] = Body(default={})) -> JSONResponse:
+    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"message": "OK"})
+                        content={"time_step": step_.model_dump()})
+
+
+@frozenlake_router.get("/{idx}/dynamics")
+async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResponse:
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
+
+    env = manager.envs[idx]
+    if actionId is None or actionId < 0:
+        state_dyns = env.P[stateId]
+        return JSONResponse(status_code=status.HTTP_201_CREATED,
+                            content={"dynamics": state_dyns})
+
+    else:
+        dynamics = env.P[stateId][actionId]
+        return JSONResponse(status_code=status.HTTP_200_OK,
+                            content={"dynamics": dynamics})
+
+# @frozenlake_router.post("/sync")
+# async def sync(cidx: int = Body(...),
+#                options: dict[str, Any] = Body(default={})) -> JSONResponse:
+#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+#                         content={"message": "OK"})

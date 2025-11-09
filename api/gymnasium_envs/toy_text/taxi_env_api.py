@@ -12,11 +12,7 @@ taxi_router = APIRouter(prefix="/gymnasium/taxi-env", tags=["taxi-env"])
 
 ENV_NAME = "Taxi"
 
-# the environments to create
-envs = {
-    0: None
-}
-
+# the manager for the environments to create
 manager = GymEnvManager(verbose=True)
 
 
@@ -134,7 +130,7 @@ async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResp
                             content={"dynamics": dynamics})
 
 
-@taxi_router.post("/sync")
-async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
-    return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"message": "OK"})
+# @taxi_router.post("/sync")
+# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+#                         content={"message": "OK"})

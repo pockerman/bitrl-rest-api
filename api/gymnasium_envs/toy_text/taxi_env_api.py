@@ -1,4 +1,3 @@
-import gymnasium as gym
 import sys
 from typing import Any
 from fastapi import APIRouter, Body, status, HTTPException
@@ -18,10 +17,10 @@ manager = GymEnvManager(verbose=True)
 
 @taxi_router.get("/{idx}/is-alive")
 async def get_is_alive(idx: int) -> JSONResponse:
-    is_alive = manager.is_alive(idx=idx)
+    is_alive_ = manager.is_alive(idx=idx)
 
     return JSONResponse(status_code=status.HTTP_200_OK,
-                        content={"result": is_alive})
+                        content={"result": is_alive_})
 
 
 @taxi_router.post("/{idx}/close")

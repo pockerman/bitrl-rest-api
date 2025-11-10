@@ -1,181 +1,130 @@
-import gymnasium as gym
+import sys
 from typing import Any
 from fastapi import APIRouter, Body, status
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from loguru import logger
 from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.gym_env_manager import GymEnvManager
 
 cliff_walking_router = APIRouter(prefix="/gymnasium/cliff-walking-env", tags=["cliff-walking-env"])
 
 ENV_NAME = "CliffWalking"
 
-# the environment to create
-envs = {
-    0: None
-}
+# the manager for the environments to create
+manager = GymEnvManager(verbose=True)
 
 
-@cliff_walking_router.get("/is-alive")
-async def get_is_alive(cidx: int) -> JSONResponse:
-    global envs
+@cliff_walking_router.get("/{idx}/is-alive")
+async def get_is_alive(idx: int) -> JSONResponse:
+    is_alive_ = manager.is_alive(idx=idx)
 
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is None:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": False})
-        else:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": True})
-    else:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                            content={"message": f"Environment {ENV_NAME} and index {cidx} has not been created"})
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"result": is_alive_})
 
 
-@cliff_walking_router.post("/close")
-async def close(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
+@cliff_walking_router.post("/{idx}/close")
+async def close(idx: int) -> JSONResponse:
+    closed = await manager.close(idx=idx)
 
-        if env is not None:
-            envs[cidx].close()
-            envs[cidx] = None
-            logger.info(f'Closed environment {ENV_NAME} and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"message": f"Environment {ENV_NAME} is closed"})
+    if closed:
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"message": "OK"})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                        content={"message": f"Environment {ENV_NAME} has not been created"})
+                        content={"message": "FAILED"})
 
 
-@cliff_walking_router.post("/make")
-async def make(version: str = Body(default="v1"),
-               cidx: int = Body(...),
+@cliff_walking_router.post("/{idx}/make")
+async def make(idx: int, version: str = Body(default="v1"),
                max_episode_steps: int = Body(default=500)) -> JSONResponse:
-    global envs
+    env_type = f"{ENV_NAME}-{version}"
 
-    if cidx in envs:
-        env = envs[cidx]
+    await manager.make(idx=idx, env_name=env_type,
+                       max_episode_steps=max_episode_steps)
 
-        if env is not None:
-            envs[cidx].close()
-
-        try:
-            env = gym.make(id=f"{ENV_NAME}-{version}",
-                           max_episode_steps=max_episode_steps)
-            envs[cidx] = env
-        except Exception as e:
-            logger.error('Exception raised')
-            logger.opt(exception=e).info("Logging exception traceback")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-    else:
-        try:
-            env = gym.make(id=f"{ENV_NAME}-{version}",
-                           max_episode_steps=max_episode_steps)
-            envs[cidx] = env
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-
-    logger.info(f'Created environment  {ENV_NAME} and index {cidx}')
+    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"result": True})
 
 
-@cliff_walking_router.post("/reset")
-async def reset(seed: int = Body(default=42),
-                cidx: int = Body(...),
+@cliff_walking_router.post("/{idx}/reset")
+async def reset(idx: int,
+                seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
     :return:
     """
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
-    global envs
+    try:
+        reset_step = await manager.reset(idx=idx, seed=seed)
 
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is not None:
-            observation, info = envs[cidx].reset(seed=seed)
-
-            step = TimeStep(observation=observation,
-                            reward=0.0,
-                            step_type=TimeStepType.FIRST,
-                            info=info,
-                            discount=1.0)
-            logger.info(f'Reset environment {ENV_NAME}  and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
-
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": f"Environment {ENV_NAME} is not initialized."
-                                           " Have you called make()?"})
-
-
-@cliff_walking_router.post("/step")
-async def step(action: int = Body(...), cidx: int = Body(...)) -> JSONResponse:
-    global envs
-
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is not None:
-                observation, reward, terminated, truncated, info = envs[cidx].step(action)
-
-                step_type = TimeStepType.MID
-                if terminated:
-                    step_type = TimeStepType.LAST
-
-                if info is not None:
-                    info['truncated'] = truncated
-                step = TimeStep(observation=observation,
-                                reward=reward,
-                                step_type=step_type,
-                                info={'prob': float(info['prob'])},
-                                discount=1.0)
-
-                logger.info(f'Step in environment {ENV_NAME} and index {cidx}')
-                return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                    content={"time_step": step.model_dump()})
-
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": f"Environment {ENV_NAME} is not initialized. "
-                                           f"Have you called make()?"})
+        observation = reset_step.observation
+        step_ = TimeStep(observation=observation,
+                         reward=0.0,
+                         step_type=TimeStepType.FIRST,
+                         info=reset_step.info,
+                         discount=1.0)
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"time_step": step_.model_dump()})
+    except Exception as e:
+        exception = sys.exc_info()
+        logger.opt(exception=exception).info("Logging exception traceback")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": f"Environment {ENV_NAME} is not initialized."
+                                               " Have you called make()?"})
 
 
-@cliff_walking_router.get("/dynamics")
-async def get_dynamics(cidx: int, stateId: int, actionId: int = None) -> JSONResponse:
-    global envs
+@cliff_walking_router.post("/{idx}/step")
+async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-    if cidx in envs:
-        env = envs[cidx]
-        if env is not None:
+    step_result = await manager.step(idx=idx, action=action)
 
-            if actionId is None or actionId < 0:
-                state_dyns = envs[cidx].P[stateId]
+    step_type = TimeStepType.MID
+    if step_result.terminated:
+        step_type = TimeStepType.LAST
 
-                print(state_dyns)
-                state_dyns = {}
-                return JSONResponse(status_code=status.HTTP_201_CREATED,
-                                    content={"dynamics": state_dyns})
-            else:
-                dynamics = envs[cidx].P[stateId][actionId]
-                new_dynamics = [(float(item[0]), int(item[1]), int(item[2]), item[3]) for item in dynamics]
+    info = step_result.info
+    if info is not None:
+        info['truncated'] = step_result.truncated
 
-                return JSONResponse(status_code=status.HTTP_200_OK,
-                                    content={"dynamics": new_dynamics})
+    step = TimeStep(observation=step_result.observation,
+                    reward=step_result.reward,
+                    step_type=step_type,
+                    info={'prob': float(info['prob'])},
+                    discount=1.0)
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": f"Environment {ENV_NAME} is not initialized. "
-                                           f"Have you called make()?"})
-
-
-@cliff_walking_router.post("/sync")
-async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"message": "OK"})
+                        content={"time_step": step.model_dump()})
+
+
+@cliff_walking_router.get("/{idx}/dynamics")
+async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResponse:
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
+
+    env = manager.envs[idx]
+    if actionId is None or actionId < 0:
+        state_dyns = env.P[stateId]
+        return JSONResponse(status_code=status.HTTP_201_CREATED,
+                            content={"dynamics": state_dyns})
+
+    else:
+        dynamics = env.P[stateId][actionId]
+        return JSONResponse(status_code=status.HTTP_200_OK,
+                            content={"dynamics": dynamics})
+
+
+# @cliff_walking_router.post("/sync")
+# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+#                         content={"message": "OK"})

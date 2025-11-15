@@ -4,7 +4,6 @@ import gymnasium as gym
 import asyncio
 from loguru import logger
 
-
 GymEnvResetResult = namedtuple(typename='GymEnvResetResult', field_names=['observation',
                                                                           'info'])
 GymEnvStepResult = namedtuple(typename="GymEnvStepResult", field_names=["observation",
@@ -12,6 +11,7 @@ GymEnvStepResult = namedtuple(typename="GymEnvStepResult", field_names=["observa
                                                                         "terminated",
                                                                         "truncated",
                                                                         "info"])
+
 
 class GymEnvManager:
     """
@@ -50,7 +50,7 @@ class GymEnvManager:
                 return True
             return False
 
-    async def step(self, idx: int, action: int) -> GymEnvStepResult:
+    async def step(self, idx: int, action: Any) -> GymEnvStepResult:
         async with self.get_lock(idx):
             env = self.envs.get(idx)
             if env is None:

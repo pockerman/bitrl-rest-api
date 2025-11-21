@@ -73,7 +73,6 @@ async def make(idx: int,
 @pendulum_router.post("/{idx}/reset")
 async def reset(idx: int,
                 seed: int = Body(default=42),
-
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 

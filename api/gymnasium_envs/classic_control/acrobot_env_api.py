@@ -2,22 +2,22 @@
 for more information check: https://gymnasium.farama.org/environments/classic_control/acrobot/
 
 """
-import gymnasium as gym
+import sys
 from typing import Any
 from loguru import logger
 from fastapi import APIRouter, Body, status
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.gym_env_manager import GymEnvManager
 
-acrobot_router = APIRouter(prefix="/gymnasium/acrobot-env", tags=["Acrobot-env API"])
+acrobot_router = APIRouter(prefix="/gymnasium/acrobot-env",
+                           tags=["Acrobot-env API"])
 
 ENV_NAME = "Acrobot"
 
-# the environments to create
-envs = {
-    0: None
-}
+# the manager for the environments to create
+manager = GymEnvManager(verbose=True)
 
 # actions that the environment accepts
 ACTIONS_SPACE = {0: "apply -1 torque to the actuated joint",
@@ -31,143 +31,106 @@ async def get_action_space() -> JSONResponse:
                         content={"action_space": ACTIONS_SPACE})
 
 
-@acrobot_router.get("/is-alive")
-async def get_is_alive(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
+@acrobot_router.get("/{idx}/is-alive")
+async def get_is_alive(idx: int) -> JSONResponse:
+    is_alive_ = manager.is_alive(idx=idx)
 
-        if env is None:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": False})
-        else:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": True})
-    else:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                            content={"message": f"Environment {ENV_NAME} and index {cidx} has not been created"})
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"result": is_alive_})
 
 
-@acrobot_router.post("/close")
-async def close(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
-        if env is not None:
-            envs[cidx].close()
-            envs[cidx] = None
-            logger.info(f'Closed environment {ENV_NAME}  and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"message": f"Environment {ENV_NAME} and index {cidx} is closed"})
+@acrobot_router.post("/{idx}/close")
+async def close(idx: int) -> JSONResponse:
+    closed = await manager.close(idx=idx)
+
+    if closed:
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"message": "OK"})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                        content={"message": f"Environment {ENV_NAME} and index {cidx} has not been created"})
+                        content={"message": "FAILED"})
 
 
-@acrobot_router.post("/make")
-async def make(version: str = Body(default="v1"), cidx: int = Body(...),
+@acrobot_router.post("/{idx}/make")
+async def make(idx: int, version: str = Body(default="v1"),
                options: dict[str, Any] = Body(default={})) -> JSONResponse:
-    global envs
     env_type = f"{ENV_NAME}-{version}"
-    if cidx in envs:
-        env = envs[cidx]
 
-        if env is not None:
-            envs[cidx].close()
+    max_episode_steps = options.get("max_episode_steps", 200)
+    await manager.make(idx=idx, env_name=env_type,
+                       max_episode_steps=max_episode_steps,
+                       )
 
-        try:
-            env = gym.make(env_type)
-            envs[cidx] = env
-        except Exception as e:
-            logger.error('An exception was raised')
-            logger.opt(exception=e).info("Logging exception traceback")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-    else:
-        try:
-            env = gym.make(env_type)
-            envs[cidx] = env
-        except Exception as e:
-            logger.error('An exception was raised')
-            logger.opt(exception=e).info("Logging exception traceback")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-
-    logger.info(f'Created environment {ENV_NAME} and index {cidx}')
+    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"result": True})
 
 
-@acrobot_router.post("/reset")
-async def reset(seed: int = Body(default=42), cidx: int = Body(...),
+@acrobot_router.post("/{idx}/reset")
+async def reset(idx: int, seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
     :return:
     """
 
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
-        if env is not None:
+    try:
+        reset_step = await manager.reset(idx=idx, seed=seed)
 
-            if len(options) != 0:
-                observation, info = env.reset(seed=seed, options=options)
-            else:
-                observation, info = env.reset(seed=seed)
-            observation = [float(val) for val in observation]
-            step = TimeStep(observation=observation,
-                            reward=0.0,
-                            step_type=TimeStepType.FIRST,
-                            info=info,
-                            discount=1.0)
-            logger.info(f'Reset environment {ENV_NAME}  and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
+        observation = reset_step.observation
+        observation = [float(val) for val in observation]
+        step_ = TimeStep(observation=observation,
+                         reward=0.0,
+                         step_type=TimeStepType.FIRST,
+                         info=reset_step.info,
+                         discount=1.0)
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"time_step": step_.model_dump()})
+    except Exception as e:
+        exception = sys.exc_info()
+        logger.opt(exception=exception).info("Logging exception traceback")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": f"Environment {ENV_NAME} is not initialized."
+                                               " Have you called make()?"})
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": f"Environment {ENV_NAME} is not initialized."
-                                           " Have you called make()?"})
+@acrobot_router.post("/{idx}/step")
+async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-
-@acrobot_router.post("/step")
-async def step(action: int = Body(...), cidx: int = Body(...)) -> JSONResponse:
     if action not in ACTIONS_SPACE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Action {action} not in {list(ACTIONS_SPACE.keys())}")
 
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
+    step_result = await manager.step(idx=idx, action=action)
 
-        if env is not None:
-            logger.info(f"Stepping in environment {ENV_NAME} with action={action}")
-            observation, reward, terminated, truncated, info = env.step(action)
-            observation = [float(val) for val in observation]
+    step_type = TimeStepType.MID
+    if step_result.terminated:
+        step_type = TimeStepType.LAST
 
-            step_type = TimeStepType.MID
-            if terminated:
-                step_type = TimeStepType.LAST
+    info = step_result.info
+    if info is not None:
+        info['truncated'] = step_result.truncated
 
-            if info is not None:
-                info['truncated'] = truncated
+    observation = step_result.observation
+    observation = [float(val) for val in observation]
+    step = TimeStep(observation=observation,
+                    reward=step_result.reward,
+                    step_type=step_type,
+                    info=step_result.info,
+                    discount=1.0)
 
-            step = TimeStep(observation=observation,
-                            reward=reward,
-                            step_type=step_type,
-                            info=info,
-                            discount=1.0)
-
-            logger.info(f'Step in environment {ENV_NAME} and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
-
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Environment {ENV_NAME} is not initialized. Have you called make()?")
-
-
-@acrobot_router.post("/sync")
-async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"message": "OK"})
+                        content={"time_step": step.model_dump()})
+
+
+# @acrobot_router.post("/sync")
+# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+#                         content={"message": "OK"})

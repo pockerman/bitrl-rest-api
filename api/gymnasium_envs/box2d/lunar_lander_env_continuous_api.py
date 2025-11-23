@@ -2,23 +2,23 @@
 for more information check: https://gymnasium.farama.org/environments/classic_control/acrobot/
 
 """
-import gymnasium as gym
+import sys
 from typing import Any
 from loguru import logger
 from fastapi import APIRouter, Body, status
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.gym_env_manager import GymEnvManager
 
 lunar_lander_continuous_router = APIRouter(prefix="/gymnasium/lunar-lander-continuous-env",
-                                         tags=["Lunar Lander Continuous API"])
+                                           tags=["Lunar Lander Continuous API"])
 
 ENV_NAME = "LunarLander"
 
-# the environments to create
-envs = {
-    0: None
-}
+# the manager for the environments to create
+manager = GymEnvManager(verbose=True)
+
 
 # actions that the environment accepts
 ACTIONS_SPACE = {0: "Main engine throttle — range [-1, 1], where 1 is full throttle",
@@ -33,36 +33,22 @@ async def get_action_space() -> JSONResponse:
 
 
 @lunar_lander_continuous_router.get("/is-alive")
-async def get_is_alive(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
-
-        if env is None:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": False})
-        else:
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content={"result": True})
-    else:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                            content={"message": f"Environment {ENV_NAME} and index {cidx} has not been created"})
+async def get_is_alive(idx: int) -> JSONResponse:
+    is_alive_ = manager.is_alive(idx=idx)
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"result": is_alive_})
 
 
-@lunar_lander_continuous_router.post("/close")
-async def close(cidx: int) -> JSONResponse:
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
-        if env is not None:
-            envs[cidx].close()
-            envs[cidx] = None
-            logger.info(f'Closed environment {ENV_NAME}  and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"message": f"Environment {ENV_NAME} and index {cidx} is closed"})
+@lunar_lander_continuous_router.post("/{idx}/close")
+async def close(idx: int) -> JSONResponse:
+    closed = await manager.close(idx=idx)
+
+    if closed:
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"message": "OK"})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
-                        content={"message": f"Environment {ENV_NAME} and index {cidx} has not been created"})
+                        content={"message": "FAILED"})
 
 
 @lunar_lander_continuous_router.post("/make")
@@ -74,108 +60,103 @@ async def make(version: str = Body(default="v3"), cidx: int = Body(...),
                             detail='Environment version v1 for `LunarLander` '
                                    'is deprecated. Please use `LunarLander-v3` instead.')
 
-    global envs
     env_type = f"{ENV_NAME}-{version}"
-    if cidx in envs:
-        env = envs[cidx]
 
-        if env is not None:
-            envs[cidx].close()
+    options['continuous'] = True
+    await manager.make(idx=idx, env_name=env_type, **options)
 
-        try:
-            env = gym.make(env_type, continuous=True, **options)
-            envs[cidx] = env
-        except Exception as e:
-            logger.error('An exception was raised')
-            logger.opt(exception=e).info("Logging exception traceback")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-    else:
-        try:
-            env = gym.make(env_type)
-            envs[cidx] = env
-        except Exception as e:
-            logger.error('An exception was raised')
-            logger.opt(exception=e).info("Logging exception traceback")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=str(e))
-
-    logger.info(f'Created environment {ENV_NAME} and index {cidx}')
+    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"result": True})
 
 
-@lunar_lander_continuous_router.post("/reset")
-async def reset(seed: int = Body(default=42), cidx: int = Body(...),
+
+
+@lunar_lander_continuous_router.post("/{idx}/reset")
+async def reset(idx: str, seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
     :return:
     """
 
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
-        if env is not None:
+    try:
+        reset_step = await manager.reset(idx=idx, seed=seed)
 
-            if len(options) != 0:
-                observation, info = env.reset(seed=seed, options=options)
-            else:
-                observation, info = env.reset(seed=seed)
-            observation = [float(val) for val in observation]
-            step = TimeStep(observation=observation,
-                            reward=0.0,
-                            step_type=TimeStepType.FIRST,
-                            info=info,
-                            discount=1.0)
-            logger.info(f'Reset environment {ENV_NAME}  and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
+        observation = reset_step.observation
+        observation = [float(val) for val in observation]
+        step_ = TimeStep(observation=observation,
+                         reward=0.0,
+                         step_type=TimeStepType.FIRST,
+                         info=reset_step.info,
+                         discount=1.0)
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                            content={"time_step": step_.model_dump()})
+    except Exception as e:
+        exception = sys.exc_info()
+        logger.opt(exception=exception).info("Logging exception traceback")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": f"Environment {ENV_NAME} is not initialized."
+                                               " Have you called make()?"})
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={"message": f"Environment {ENV_NAME} is not initialized."
-                                           " Have you called make()?"})
+    # global envs
+    # if cidx in envs:
+    #     env = envs[cidx]
+    #
+    #     if env is not None:
+    #
+    #         if len(options) != 0:
+    #             observation, info = env.reset(seed=seed, options=options)
+    #         else:
+    #             observation, info = env.reset(seed=seed)
+    #         observation = [float(val) for val in observation]
+    #         step = TimeStep(observation=observation,
+    #                         reward=0.0,
+    #                         step_type=TimeStepType.FIRST,
+    #                         info=info,
+    #                         discount=1.0)
+    #         logger.info(f'Reset environment {ENV_NAME}  and index {cidx}')
+    #         return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+    #                             content={"time_step": step.model_dump()})
+    #
+    # raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+    #                     detail={"message": f"Environment {ENV_NAME} is not initialized."
+    #                                        " Have you called make()?"})
 
 
-@lunar_lander_continuous_router.post("/step")
-async def step(action: list[float] = Body(...), cidx: int = Body(...)) -> JSONResponse:
+@lunar_lander_continuous_router.post("/{idx}/step")
+async def step(idx: str, action: list[float] = Body(...)) -> JSONResponse:
+
+    if idx not in manager:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
     if len(action) != len(ACTIONS_SPACE):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Action vector size {len(action)} != 2")
-        
-    global envs
-    if cidx in envs:
-        env = envs[cidx]
 
-        if env is not None:
-            logger.info(f"Stepping in environment {ENV_NAME} with action={action}")
-            observation, reward, terminated, truncated, info = env.step(action)
-            observation = [float(val) for val in observation]
+    step_result = await manager.step(idx=idx, action=action)
 
-            step_type = TimeStepType.MID
-            if terminated:
-                step_type = TimeStepType.LAST
+    step_type = TimeStepType.MID
+    if step_result.terminated:
+        step_type = TimeStepType.LAST
 
-            if info is not None:
-                info['truncated'] = truncated
+    info = step_result.info
+    if info is not None:
+        info['truncated'] = step_result.truncated
 
-            step = TimeStep(observation=observation,
-                            reward=reward,
-                            step_type=step_type,
-                            info=info,
-                            discount=1.0)
+    observation = step_result.observation
+    observation = [float(val) for val in observation]
+    step_ = TimeStep(observation=observation,
+                     reward=step_result.reward,
+                     step_type=step_type,
+                     info=step_result.info,
+                     discount=1.0)
 
-            logger.info(f'Step in environment {ENV_NAME} and index {cidx}')
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content={"time_step": step.model_dump()})
-
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Environment {ENV_NAME} is not initialized. Have you called make()?")
-
-
-@lunar_lander_continuous_router.post("/sync")
-async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"message": "OK"})
+                        content={"time_step": step_.model_dump()})

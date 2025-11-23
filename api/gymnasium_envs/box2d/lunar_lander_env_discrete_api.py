@@ -16,7 +16,6 @@ lunar_lander_discrete_router = APIRouter(prefix="/gymnasium/lunar-lander-discret
 
 ENV_NAME = "LunarLander"
 
-# the environments to create
 # the manager for the environments to create
 manager = GymEnvManager(verbose=True)
 

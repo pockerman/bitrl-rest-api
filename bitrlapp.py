@@ -4,8 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api_info import api_info_router
 
-# --------Gymnasium environments---------
-
 from api.gymnasium_envs.toy_text.frozenlake_env_api import frozenlake_router
 from api.gymnasium_envs.toy_text.taxi_env_api import taxi_router
 from api.gymnasium_envs.toy_text.cliffwalking_env_api import cliff_walking_router
@@ -18,12 +16,17 @@ from api.gymnasium_envs.classic_control.v.acrobot_v_env_api import acrobot_v_rou
 from api.gymnasium_envs.box2d.lunar_lander_env_discrete_api import lunar_lander_discrete_router
 from api.gymnasium_envs.box2d.lunar_lander_env_continuous_api import lunar_lander_continuous_router
 
+#
+
 from api.gym_walk_env.gym_walk_env_api import gym_walk_env_router
 
 from api.gym_pybullet_drones_env.quadrotor_sim_env_api import FOUND_GYM_PYBULLET
 
 if FOUND_GYM_PYBULLET:
     from api.gym_pybullet_drones_env import quadrotor_sim_router
+
+# --------Torchboard---------
+from api.torchboard_api.routes import tensorboard_api_router
 
 from api_config import get_api_config
 
@@ -59,6 +62,8 @@ app.include_router(lunar_lander_continuous_router, prefix=BASE_URL)
 
 if FOUND_GYM_PYBULLET:
     app.include_router(quadrotor_sim_router, prefix=BASE_URL)
+
+app.include_router(tensorboard_api_router)
 
 
 @app.on_event("startup")

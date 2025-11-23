@@ -1,5 +1,5 @@
 class Config:
-    API_TITLE: str = "rlenvs-rest-api"
+    API_TITLE: str = "bitrl-rest-api"
     DEBUG: bool = True
 
 

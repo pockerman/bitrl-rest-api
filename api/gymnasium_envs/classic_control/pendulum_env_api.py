@@ -5,7 +5,6 @@ The action is a ndarray with shape (1,) representing the torque applied to free 
 
 """
 from loguru import logger
-import gymnasium as gym
 from typing import Any
 import sys
 from fastapi import APIRouter, Body, status
@@ -35,7 +34,6 @@ async def get_action_space() -> JSONResponse:
 @pendulum_router.get("/{idx}/is-alive")
 async def get_is_alive(idx: int) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
-
     return JSONResponse(status_code=status.HTTP_200_OK,
                         content={"result": is_alive_})
 

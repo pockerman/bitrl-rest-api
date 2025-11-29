@@ -6,12 +6,12 @@ Specifically:
 ```commandline
 GET  /{idx}/is-alive
 POST /{idx}/close
-POST /{idx}/make
+POST /make
 POST /{idx}/reset
 POST /{idx}/step
 ```
 
-There is also a limited API for Tensor board:
+There is also a limited API for Tensorboard:
 
 ```commandline
 POST /init

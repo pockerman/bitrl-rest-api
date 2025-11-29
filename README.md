@@ -1,4 +1,4 @@
-# bitrl-rest-api
+# bitrl-envs-api
 
 API for reinforcement learning environments. Each environment exposes a Gymnasium like interface.
 Specifically:

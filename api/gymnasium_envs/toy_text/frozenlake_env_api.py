@@ -16,7 +16,7 @@ manager = GymEnvManager(verbose=True)
 
 
 @frozenlake_router.get("/{idx}/is-alive")
-async def is_alive(idx: int) -> JSONResponse:
+async def is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
 
     return JSONResponse(status_code=status.HTTP_200_OK,
@@ -24,7 +24,7 @@ async def is_alive(idx: int) -> JSONResponse:
 
 
 @frozenlake_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -35,9 +35,8 @@ async def close(idx: int) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@frozenlake_router.post("/{idx}/make")
-async def make(idx: int,
-               version: str = Body(default='v1'),
+@frozenlake_router.post("/make")
+async def make(version: str = Body(default='v1'),
                options: dict[str, Any] = Body(default={"map_name": "4x4",
                                                        "is_slippery": True,
                                                        "max_episode_steps": 500})
@@ -47,17 +46,17 @@ async def make(idx: int,
     max_episode_steps = options.get("max_episode_steps", 500)
     env_type = f"{ENV_NAME}-{version}"
 
-    await manager.make(idx=idx, env_name=env_type,
-                       max_episode_steps=max_episode_steps,
-                       map_name=map_name,
-                       is_slippery=is_slippery)
+    idx = await manager.make(env_name=env_type,
+                             max_episode_steps=max_episode_steps,
+                             map_name=map_name,
+                             is_slippery=is_slippery)
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
+                        content={"message": "OK", "idx": idx})
 
 
 @frozenlake_router.post("/{idx}/reset")
-async def reset(idx: int,
+async def reset(idx: str,
                 seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
@@ -91,7 +90,7 @@ async def reset(idx: int,
 
 
 @frozenlake_router.post("/{idx}/step")
-async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+async def step(idx: str, action: int = Body(...)) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -118,7 +117,7 @@ async def step(idx: int, action: int = Body(...)) -> JSONResponse:
 
 
 @frozenlake_router.get("/{idx}/dynamics")
-async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResponse:
+async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})

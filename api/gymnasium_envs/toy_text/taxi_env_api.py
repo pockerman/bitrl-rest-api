@@ -16,7 +16,7 @@ manager = GymEnvManager(verbose=True)
 
 
 @taxi_router.get("/{idx}/is-alive")
-async def get_is_alive(idx: int) -> JSONResponse:
+async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
 
     return JSONResponse(status_code=status.HTTP_200_OK,
@@ -24,7 +24,7 @@ async def get_is_alive(idx: int) -> JSONResponse:
 
 
 @taxi_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -35,25 +35,24 @@ async def close(idx: int) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@taxi_router.post("/{idx}/make")
-async def make(idx: int,
-               version: str = Body(default="v3"),
+@taxi_router.post("/make")
+async def make(version: str = Body(default="v3"),
                options: dict[str, Any] = Body(default={"max_episode_steps": 500})
                ) -> JSONResponse:
     env_type = f"{ENV_NAME}-{version}"
 
     max_episode_steps = options.get("max_episode_steps", 500)
 
-    await manager.make(idx=idx, env_name=env_type,
-                       max_episode_steps=max_episode_steps)
+    idx = await manager.make(env_name=env_type,
+                             max_episode_steps=max_episode_steps)
 
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
+                        content={"message": "OK", "idx": idx})
 
 
 @taxi_router.post("/{idx}/reset")
-async def reset(idx: int, seed: int = Body(default=42), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+async def reset(idx: str, seed: int = Body(default=42), options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -84,7 +83,7 @@ async def reset(idx: int, seed: int = Body(default=42), options: dict[str, Any] 
 
 
 @taxi_router.post("/{idx]/step")
-async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+async def step(idx: str, action: int = Body(...)) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -100,19 +99,19 @@ async def step(idx: int, action: int = Body(...)) -> JSONResponse:
         info['truncated'] = step_result.truncated
 
     action_mask = info['action_mask']
-    step = TimeStep(observation=step_result.observation,
-                    reward=step_result.reward,
-                    step_type=step_type,
-                    info={'action_mask': [int(i) for i in action_mask], 'prob': float(info['prob'])},
-                    discount=1.0)
+    step_ = TimeStep(observation=step_result.observation,
+                     reward=step_result.reward,
+                     step_type=step_type,
+                     info={'action_mask': [int(i) for i in action_mask], 'prob': float(info['prob'])},
+                     discount=1.0)
 
     logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                        content={"time_step": step.model_dump()})
+                        content={"time_step": step_.model_dump()})
 
 
 @taxi_router.get("/{idx}/dynamics")
-async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResponse:
+async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -127,7 +126,6 @@ async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResp
         dynamics = env.P[stateId][actionId]
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": dynamics})
-
 
 # @taxi_router.post("/sync")
 # async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:

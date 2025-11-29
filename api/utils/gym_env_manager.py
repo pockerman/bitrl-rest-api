@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from collections import namedtuple
+import uuid
 import gymnasium as gym
 import asyncio
 from loguru import logger
@@ -21,28 +22,26 @@ class GymEnvManager:
 
     def __init__(self, verbose: bool = True):
         self.verbose = verbose
-        self.envs: dict[int, gym.Env] = {}
-        self.locks: dict[int, asyncio.Lock] = {}
+        self.envs: dict[str, gym.Env] = {}
+        self.locks: dict[str, asyncio.Lock] = {}
 
-    def __contains__(self, idx: int) -> bool:
+    def __contains__(self, idx: str) -> bool:
         """Allow `if idx in manager:` syntax."""
         return self.is_alive(idx)
 
-    def get_lock(self, idx: int) -> asyncio.Lock:
+    def get_lock(self, idx: str) -> asyncio.Lock:
         if idx not in self.locks:
-            self.locks[idx] = asyncio.Lock()
+            raise ValueError(f"idx not in locks")
         return self.locks[idx]
 
-    async def make(self, idx: int, env_name: str, **kwargs) -> bool:
-        async with self.get_lock(idx):
-            if idx in self.envs:
-                if self.verbose:
-                    logger.warning(f"Closing existing environment {idx}")
-                self.envs[idx].close()
-            self.envs[idx] = gym.make(env_name, **kwargs)
-            return True
+    async def make(self, env_name: str, **kwargs) -> str:
 
-    async def close(self, idx: int) -> bool:
+        idx = uuid.uuid4().hex
+        self.envs[idx] = gym.make(env_name, **kwargs)
+        self.locks[idx] = asyncio.Lock()
+        return idx
+
+    async def close(self, idx: str) -> bool:
         async with self.get_lock(idx):
             if idx in self.envs:
                 self.envs[idx].close()
@@ -50,7 +49,7 @@ class GymEnvManager:
                 return True
             return False
 
-    async def step(self, idx: int, action: Any) -> GymEnvStepResult:
+    async def step(self, idx: str, action: Any) -> GymEnvStepResult:
         async with self.get_lock(idx):
             env = self.envs.get(idx)
             if env is None:
@@ -59,7 +58,7 @@ class GymEnvManager:
             return GymEnvStepResult(observation=observation, reward=reward,
                                     terminated=terminated, truncated=truncated, info=info)
 
-    async def reset(self, idx: int, seed: Optional[int] = None, **kwargs) -> GymEnvResetResult:
+    async def reset(self, idx: str, seed: Optional[int] = None, **kwargs) -> GymEnvResetResult:
         """Reset the environment and return (observation, info)."""
         async with self.get_lock(idx):
             env = self.envs.get(idx)
@@ -70,6 +69,6 @@ class GymEnvManager:
             logger.info(f"Reset environment {idx}")
             return GymEnvResetResult(observation=obs, info=info)
 
-    def is_alive(self, idx: int) -> bool:
+    def is_alive(self, idx: str) -> bool:
         """Check if an environment exists and is active."""
-        return idx in self.envs and self.envs[idx] is not None
+        return idx in self.envs and self.envs[str] is not None

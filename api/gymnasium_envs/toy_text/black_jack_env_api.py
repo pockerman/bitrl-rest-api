@@ -19,15 +19,14 @@ ACTIONS_SPACE = {0: "STICK", 1: "HIT"}
 
 
 @black_jack_router.get("/{idx}/is-alive")
-async def get_is_alive(idx: int) -> JSONResponse:
+async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
-
     return JSONResponse(status_code=status.HTTP_200_OK,
                         content={"result": is_alive_})
 
 
 @black_jack_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -38,24 +37,23 @@ async def close(idx: int) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@black_jack_router.post("/{idx}/make")
-async def make(idx: int,
-               version: str = Body(default="v1"),
+@black_jack_router.post("/make")
+async def make(version: str = Body(default="v1"),
                options: dict[str, Any] = Body(default={"natural": False, "sab": False})) -> JSONResponse:
     env_type = f"{ENV_NAME}-{version}"
 
     natural = options.get("natural", False)
     sab = options.get("sab", False)
-    await manager.make(idx=idx, env_name=env_type,
-                       natural=natural, sab=sab)
+    idx = await manager.make(env_name=env_type,
+                             natural=natural, sab=sab)
 
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
+                        content={"message": "OK", "idx": idx})
 
 
-@black_jack_router.post("/reset")
-async def reset(idx: int, seed: int = Body(default=42),
+@black_jack_router.post("/{idx}/reset")
+async def reset(idx: str, seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
@@ -86,7 +84,7 @@ async def reset(idx: int, seed: int = Body(default=42),
 
 
 @black_jack_router.post("/{idx}/step")
-async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+async def step(idx: str, action: int = Body(...)) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -117,7 +115,7 @@ async def step(idx: int, action: int = Body(...)) -> JSONResponse:
 
 
 @black_jack_router.get("/{idx}/dynamics")
-async def get_dynamics(idx: int, stateId: int, actionId: int = None) -> JSONResponse:
+async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResponse:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Environment {ENV_NAME} does not exposes dynamics.")
 

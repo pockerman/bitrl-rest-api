@@ -32,7 +32,7 @@ async def get_action_space() -> JSONResponse:
 
 
 @acrobot_router.get("/{idx}/is-alive")
-async def get_is_alive(idx: int) -> JSONResponse:
+async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
 
     return JSONResponse(status_code=status.HTTP_200_OK,
@@ -40,7 +40,7 @@ async def get_is_alive(idx: int) -> JSONResponse:
 
 
 @acrobot_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -51,23 +51,22 @@ async def close(idx: int) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@acrobot_router.post("/{idx}/make")
-async def make(idx: int, version: str = Body(default="v1"),
+@acrobot_router.post("/make")
+async def make(version: str = Body(default="v1"),
                options: dict[str, Any] = Body(default={})) -> JSONResponse:
     env_type = f"{ENV_NAME}-{version}"
 
     max_episode_steps = options.get("max_episode_steps", 200)
-    await manager.make(idx=idx, env_name=env_type,
-                       max_episode_steps=max_episode_steps,
-                       )
+    idx = await manager.make(env_name=env_type,
+                             max_episode_steps=max_episode_steps)
 
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
+                        content={"message": "OK", "idx": idx})
 
 
 @acrobot_router.post("/{idx}/reset")
-async def reset(idx: int, seed: int = Body(default=42),
+async def reset(idx: str, seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
 
@@ -97,8 +96,9 @@ async def reset(idx: int, seed: int = Body(default=42),
                             detail={"message": f"Environment {ENV_NAME} is not initialized."
                                                " Have you called make()?"})
 
+
 @acrobot_router.post("/{idx}/step")
-async def step(idx: int, action: int = Body(...)) -> JSONResponse:
+async def step(idx: str, action: int = Body(...)) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -128,9 +128,3 @@ async def step(idx: int, action: int = Body(...)) -> JSONResponse:
     logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step.model_dump()})
-
-
-# @acrobot_router.post("/sync")
-# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
-#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-#                         content={"message": "OK"})

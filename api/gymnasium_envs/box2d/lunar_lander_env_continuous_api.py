@@ -19,7 +19,6 @@ ENV_NAME = "LunarLander"
 # the manager for the environments to create
 manager = GymEnvManager(verbose=True)
 
-
 # actions that the environment accepts
 ACTIONS_SPACE = {0: "Main engine throttle — range [-1, 1], where 1 is full throttle",
                  1: "Side engine throttle — range [-1, 1], controlling left/right orientation.",
@@ -33,14 +32,14 @@ async def get_action_space() -> JSONResponse:
 
 
 @lunar_lander_continuous_router.get("/is-alive")
-async def get_is_alive(idx: int) -> JSONResponse:
+async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
     return JSONResponse(status_code=status.HTTP_200_OK,
                         content={"result": is_alive_})
 
 
 @lunar_lander_continuous_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -52,7 +51,7 @@ async def close(idx: int) -> JSONResponse:
 
 
 @lunar_lander_continuous_router.post("/make")
-async def make(version: str = Body(default="v3"), cidx: int = Body(...),
+async def make(version: str = Body(default="v3"),
                options: dict[str, Any] = Body(default={'gravity': -10.0, 'enable_wind': False,
                                                        'wind_power': 15.0, 'turbulence_power': 1.5})) -> JSONResponse:
     if version == 'v1' or version == 'v2':
@@ -63,13 +62,11 @@ async def make(version: str = Body(default="v3"), cidx: int = Body(...),
     env_type = f"{ENV_NAME}-{version}"
 
     options['continuous'] = True
-    await manager.make(idx=idx, env_name=env_type, **options)
+    idx = await manager.make(env_name=env_type, **options)
 
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
-
-
+                        content={"message": "OK", "idx": idx})
 
 
 @lunar_lander_continuous_router.post("/{idx}/reset")
@@ -103,34 +100,9 @@ async def reset(idx: str, seed: int = Body(default=42),
                             detail={"message": f"Environment {ENV_NAME} is not initialized."
                                                " Have you called make()?"})
 
-    # global envs
-    # if cidx in envs:
-    #     env = envs[cidx]
-    #
-    #     if env is not None:
-    #
-    #         if len(options) != 0:
-    #             observation, info = env.reset(seed=seed, options=options)
-    #         else:
-    #             observation, info = env.reset(seed=seed)
-    #         observation = [float(val) for val in observation]
-    #         step = TimeStep(observation=observation,
-    #                         reward=0.0,
-    #                         step_type=TimeStepType.FIRST,
-    #                         info=info,
-    #                         discount=1.0)
-    #         logger.info(f'Reset environment {ENV_NAME}  and index {cidx}')
-    #         return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-    #                             content={"time_step": step.model_dump()})
-    #
-    # raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-    #                     detail={"message": f"Environment {ENV_NAME} is not initialized."
-    #                                        " Have you called make()?"})
-
 
 @lunar_lander_continuous_router.post("/{idx}/step")
 async def step(idx: str, action: list[float] = Body(...)) -> JSONResponse:
-
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})

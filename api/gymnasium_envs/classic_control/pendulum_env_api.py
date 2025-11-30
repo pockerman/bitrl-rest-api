@@ -32,14 +32,14 @@ async def get_action_space() -> JSONResponse:
 
 
 @pendulum_router.get("/{idx}/is-alive")
-async def get_is_alive(idx: int) -> JSONResponse:
+async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
     return JSONResponse(status_code=status.HTTP_200_OK,
                         content={"result": is_alive_})
 
 
 @pendulum_router.post("/{idx}/close")
-async def close(idx: int) -> JSONResponse:
+async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 
     if closed:
@@ -51,25 +51,24 @@ async def close(idx: int) -> JSONResponse:
 
 
 @pendulum_router.post("/{idx}/make")
-async def make(idx: int,
-               version: str = Body(default="v1"),
+async def make(version: str = Body(default="v1"),
                options: dict[str, Any] = Body(default={"g": 10.0, "max_episode_steps": 200})) -> JSONResponse:
     env_type = f"{ENV_NAME}-{version}"
 
     g = options.get("g", 10.0)
     max_episode_steps = options.get("max_episode_steps", 200)
 
-    await manager.make(idx=idx, env_name=env_type,
-                       max_episode_steps=max_episode_steps,
-                       g=g)
+    idx = await manager.make(env_name=env_type,
+                             max_episode_steps=max_episode_steps,
+                             g=g)
 
     logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
-                        content={"result": True})
+                        content={"message": "OK", "idx": idx})
 
 
 @pendulum_router.post("/{idx}/reset")
-async def reset(idx: int,
+async def reset(idx: str,
                 seed: int = Body(default=42),
                 options: dict[str, Any] = Body(default={})) -> JSONResponse:
     """Reset the environment
@@ -102,7 +101,7 @@ async def reset(idx: int,
 
 
 @pendulum_router.post("/{idx}/step")
-async def step(idx: int, action: float = Body(...)) -> JSONResponse:
+async def step(idx: str, action: float = Body(...)) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -123,18 +122,12 @@ async def step(idx: int, action: float = Body(...)) -> JSONResponse:
 
     observation = step_result.observation
     observation = [float(val) for val in observation]
-    step = TimeStep(observation=observation,
-                    reward=step_result.reward,
-                    step_type=step_type,
-                    info=step_result.info,
-                    discount=1.0)
+    step_ = TimeStep(observation=observation,
+                     reward=step_result.reward,
+                     step_type=step_type,
+                     info=step_result.info,
+                     discount=1.0)
 
     logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step.model_dump()})
-
-
-# @pendulum_router.post("/sync")
-# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
-#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-#                         content={"message": "OK"})

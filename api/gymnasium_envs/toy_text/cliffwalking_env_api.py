@@ -122,8 +122,3 @@ async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResp
         dynamics = env.P[stateId][actionId]
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": dynamics})
-
-# @cliff_walking_router.post("/sync")
-# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
-#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-#                         content={"message": "OK"})

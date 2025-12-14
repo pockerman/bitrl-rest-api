@@ -25,6 +25,12 @@ ACTIONS_SPACE = {0: "Main engine throttle — range [-1, 1], where 1 is full thr
                  }
 
 
+@lunar_lander_continuous_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @lunar_lander_continuous_router.get("/action-space")
 async def get_action_space() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_200_OK,

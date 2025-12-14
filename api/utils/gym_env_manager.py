@@ -25,6 +25,9 @@ class GymEnvManager:
         self.envs: dict[str, gym.Env] = {}
         self.locks: dict[str, asyncio.Lock] = {}
 
+    def __len__(self) -> int:
+        return len(self.envs)
+
     def __contains__(self, idx: str) -> bool:
         """Allow `if idx in manager:` syntax."""
         return self.is_alive(idx)

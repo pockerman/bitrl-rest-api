@@ -1,15 +1,139 @@
 # bitrl-envs-api
 
 API for reinforcement learning environments. Each environment exposes a Gymnasium like interface.
-Specifically:
+The available endpoints are described below.
+
+## Environment API
+
+### Query liveness
 
 ```commandline
-GET  /{idx}/is-alive
+GET /{idx}/is-alive
+```
+
+**Description: ** Returns true if the environment with the given id is alive on the server. The response format is
+
+```commandline
+{"result": is_alive_}
+```
+
+### Close the environment
+
+```commandline
 POST /{idx}/close
+```
+
+**Description: ** Closes the environment with the given id. The response format on successful op is:
+
+```commandline
+{"message": "OK"}
+```
+
+returns 
+
+```commandline
+{"message": "FAILED"}
+```
+
+if the the op was not successful.
+
+### Create a new environment
+
+```commandline
 POST /make
+```
+
+**Description: ** Creates a new environment. Response format:
+
+```commandline
+{"message": "OK", "idx": "idx"}
+```
+
+- Payload:
+```commandline
+{
+ "version": "version",
+ "options": json
+}
+```
+
+### Reset the environment
+
+```commandline
 POST /{idx}/reset
+```
+
+**Description: ** Reset the environment with the given id. Response format:
+
+```commandline
+{"time_step": step}
+```
+
+where _step_ has the following structure:
+
+```commandline
+class TimeStep(BaseModel, Generic[_Reward, _Discount, _Observation]):
+    step_type: TimeStepType = Field(title="step_type")
+    reward: Optional[_Reward] = Field(title="reward")
+    discount: Optional[_Discount] = Field(title="discount")
+    observation: _Observation = Field(title="observation")
+    info: dict = Field(title="info")
+
+    def first(self) -> bool:
+        return self.step_type == TimeStepType.FIRST
+
+    def mid(self) -> bool:
+        return self.step_type == TimeStepType.MID
+
+    def last(self) -> bool:
+        return self.step_type == TimeStepType.LAST
+
+    @property
+    def done(self) -> bool:
+        return self.last()
+```
+
+- Payload:
+```commandline
+{
+seed: int = 42,
+options: dict[str, Any] = {}
+}
+```
+
+### Step in the environment
+
+```commandline
 POST /{idx}/step
 ```
+
+**Description: ** Step in the environment with the given id. Response format:
+
+```commandline
+{"time_step": step}
+```
+
+- Payload:
+
+```commandline
+ action: Any
+```
+
+where _action_ is the admissible action to be executed on the environment.
+
+### Query number of copies
+
+```commandline
+GET /copies
+```
+
+**Description: ** Query the number of copies available for a specific environment. Response format:
+
+```commandline
+{"copies": len(manager)}
+```
+
+## Tensorboard API
 
 There is also a limited API for Tensorboard:
 

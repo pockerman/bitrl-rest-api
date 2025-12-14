@@ -15,6 +15,12 @@ ENV_NAME = "FrozenLake"
 manager = GymEnvManager(verbose=True)
 
 
+@frozenlake_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @frozenlake_router.get("/{idx}/is-alive")
 async def is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
@@ -132,9 +138,3 @@ async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResp
         dynamics = env.P[stateId][actionId]
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": dynamics})
-
-# @frozenlake_router.post("/sync")
-# async def sync(cidx: int = Body(...),
-#                options: dict[str, Any] = Body(default={})) -> JSONResponse:
-#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-#                         content={"message": "OK"})

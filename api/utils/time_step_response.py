@@ -53,14 +53,6 @@ class TimeStep(BaseModel, Generic[_Reward, _Discount, _Observation]):
     def done(self) -> bool:
         return self.last()
 
-    # def dump_time_step(self) -> Dict:
-    #     return {
-    #         "step_type": self.step_type,
-    #         "discount": self.discount,
-    #         "observation": self.observation,
-    #         "info": self.info
-    #     }
-
 
 class TimeStepV(BaseModel, Generic[_Reward, _Discount, _Observation]):
     step_types: list[TimeStepType] = Field(title='step_types')

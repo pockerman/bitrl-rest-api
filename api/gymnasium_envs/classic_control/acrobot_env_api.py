@@ -25,6 +25,12 @@ ACTIONS_SPACE = {0: "apply -1 torque to the actuated joint",
                  2: "apply 1 torque to the actuated joint"}
 
 
+@acrobot_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @acrobot_router.get("/action-space")
 async def get_action_space() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_200_OK,

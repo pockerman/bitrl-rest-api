@@ -18,6 +18,12 @@ manager = GymEnvManager(verbose=True)
 ACTIONS_SPACE = {0: "STICK", 1: "HIT"}
 
 
+@black_jack_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @black_jack_router.get("/{idx}/is-alive")
 async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
@@ -118,8 +124,3 @@ async def step(idx: str, action: int = Body(...)) -> JSONResponse:
 async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResponse:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Environment {ENV_NAME} does not exposes dynamics.")
-
-# @black_jack_router.post("/sync")
-# async def sync(cidx: int = Body(...), options: dict[str, Any] = Body(default={})) -> JSONResponse:
-#     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-#                         content={"message": "OK"})

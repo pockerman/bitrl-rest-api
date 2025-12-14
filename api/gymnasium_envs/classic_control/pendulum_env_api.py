@@ -25,6 +25,12 @@ manager = GymEnvManager(verbose=True)
 ACTIONS_SPACE = [1, ]
 
 
+@pendulum_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @pendulum_router.get("/action-space")
 async def get_action_space() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_200_OK,

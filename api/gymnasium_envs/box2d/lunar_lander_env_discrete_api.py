@@ -27,6 +27,12 @@ ACTIONS_SPACE = {0: "do nothing",
                  }
 
 
+@lunar_lander_discrete_router.get("/copies")
+async def get_n_copies() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_200_OK,
+                        content={"copies": len(manager)})
+
+
 @lunar_lander_discrete_router.get("/action-space")
 async def get_action_space() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_200_OK,

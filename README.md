@@ -1,6 +1,9 @@
 # bitrl-envs-api
 
 API for reinforcement learning environments. Each environment exposes a Gymnasium like interface.
+The API is based on <a href="https://fastapi.tiangolo.com/">FastAPI</a>. You can launch a server using the ```entrypoint.sh``` script.
+Alternatively, you can use Docker. You can find examples with C++ at: <a href="https://github.com/pockerman/bitrl">bitrl</a>
+
 The available endpoints are described below.
 
 ## Environment API
@@ -113,7 +116,7 @@ POST /{idx}/step
 {"time_step": step}
 ```
 
-- Payload:
+#### Payload:
 
 ```commandline
  action: Any
@@ -146,5 +149,21 @@ POST /add-scalars
 ```
 
 
-The API is based on <a href="https://fastapi.tiangolo.com/">FastAPI</a>. You can launch a server using the ```entrypoint.sh``` script.
-Alternatively, you can use Docker. You can find examples with C++ at: <a href="https://github.com/pockerman/bitrl">bitrl</a>
+## Installation
+
+You can use Docker to run the API:
+
+```commandline
+docker build -t bitrl-rest-api:v1 .
+docker run -p 8001:8001 bitrl-rest-api:v1
+```
+
+You can access the API documentation at http://0.0.0.0:8001/docs
+
+There is also a pre-built Docker image at: https://hub.docker.com/repository/docker/alexgiavaras/bitrl-rest-api/general
+
+
+
+
+
+

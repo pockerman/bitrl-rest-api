@@ -14,7 +14,7 @@ The available endpoints are described below.
 GET /{idx}/is-alive
 ```
 
-**Description: ** Returns true if the environment with the given id is alive on the server. The response format is
+**Description:** Returns true if the environment with the given id is alive on the server. The response format is
 
 ```commandline
 {"result": is_alive_}
@@ -26,7 +26,7 @@ GET /{idx}/is-alive
 POST /{idx}/close
 ```
 
-**Description: ** Closes the environment with the given id. The response format on successful op is:
+**Description:** Closes the environment with the given id. The response format on successful op is:
 
 ```commandline
 {"message": "OK"}
@@ -46,13 +46,12 @@ if the the op was not successful.
 POST /make
 ```
 
-**Description: ** Creates a new environment. Response format:
+**Description:** Creates a new environment. Response format:
 
 ```commandline
 {"message": "OK", "idx": "idx"}
 ```
-
-- Payload:
+#### Payload:
 ```commandline
 {
  "version": "version",
@@ -66,7 +65,7 @@ POST /make
 POST /{idx}/reset
 ```
 
-**Description: ** Reset the environment with the given id. Response format:
+**Description:** Reset the environment with the given id. Response format:
 
 ```commandline
 {"time_step": step}
@@ -95,8 +94,7 @@ class TimeStep(BaseModel, Generic[_Reward, _Discount, _Observation]):
     def done(self) -> bool:
         return self.last()
 ```
-
-- Payload:
+#### Payload:
 ```commandline
 {
 seed: int = 42,
@@ -110,7 +108,7 @@ options: dict[str, Any] = {}
 POST /{idx}/step
 ```
 
-**Description: ** Step in the environment with the given id. Response format:
+**Description:** Step in the environment with the given id. Response format:
 
 ```commandline
 {"time_step": step}
@@ -130,7 +128,7 @@ where _action_ is the admissible action to be executed on the environment.
 GET /copies
 ```
 
-**Description: ** Query the number of copies available for a specific environment. Response format:
+**Description:** Query the number of copies available for a specific environment. Response format:
 
 ```commandline
 {"copies": len(manager)}

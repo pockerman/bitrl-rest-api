@@ -4,8 +4,11 @@ from fastapi import APIRouter, Body, status, HTTPException
 from fastapi.responses import JSONResponse
 
 from loguru import logger
-from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
+from api.utils.spaces.discrete_action import DiscreteAction
+from api.utils.reset_request_model import RestEnvRequestModel
+from api.utils.make_env_response_model import MakeEnvResponseModel
 
 taxi_router = APIRouter(prefix="/gymnasium/taxi-env", tags=["taxi-env"])
 
@@ -41,7 +44,9 @@ async def close(idx: str) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@taxi_router.post("/make")
+@taxi_router.post("/make",
+                  status_code=status.HTTP_201_CREATED,
+                  response_model=MakeEnvResponseModel)
 async def make(version: str = Body(default="v3"),
                options: dict[str, Any] = Body(default={"max_episode_steps": 500})
                ) -> JSONResponse:
@@ -57,8 +62,10 @@ async def make(version: str = Body(default="v3"),
                         content={"message": "OK", "idx": idx})
 
 
-@taxi_router.post("/{idx}/reset")
-async def reset(idx: str, seed: int = Body(default=42), options: dict[str, Any] = Body(default={})) -> JSONResponse:
+@taxi_router.post("/{idx}/reset",
+                  status_code=status.HTTP_202_ACCEPTED,
+                  response_model=TimeStepResponse)
+async def reset(idx: str,  reset_ops: RestEnvRequestModel) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -69,7 +76,7 @@ async def reset(idx: str, seed: int = Body(default=42), options: dict[str, Any] 
                             detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
     try:
-        reset_step = await manager.reset(idx=idx, seed=seed)
+        reset_step = await manager.reset(idx=idx, seed=reset_ops.seed)
 
         action_mask = reset_step.info['action_mask']
         observation = reset_step.observation
@@ -88,8 +95,10 @@ async def reset(idx: str, seed: int = Body(default=42), options: dict[str, Any] 
                                                " Have you called make()?"})
 
 
-@taxi_router.post("/{idx]/step")
-async def step(idx: str, action: int = Body(...)) -> JSONResponse:
+@taxi_router.post("/{idx}/step",
+                  status_code=status.HTTP_202_ACCEPTED,
+                  response_model=TimeStepResponse)
+async def step(idx: str, action: DiscreteAction) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})

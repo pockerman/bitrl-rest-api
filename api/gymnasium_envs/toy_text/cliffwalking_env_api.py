@@ -4,10 +4,14 @@ from fastapi import APIRouter, Body, status
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from loguru import logger
-from api.utils.time_step_response import TimeStep, TimeStepType
+from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
+from api.utils.spaces.discrete_action import DiscreteAction
+from api.utils.reset_request_model import RestEnvRequestModel
+from api.utils.make_env_response_model import MakeEnvResponseModel
 
-cliff_walking_router = APIRouter(prefix="/gymnasium/cliff-walking-env", tags=["cliff-walking-env"])
+cliff_walking_router = APIRouter(prefix="/gymnasium/cliff-walking-env",
+                                 tags=["cliff-walking-env"])
 
 ENV_NAME = "CliffWalking"
 
@@ -41,7 +45,9 @@ async def close(idx: str) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@cliff_walking_router.post("/make")
+@cliff_walking_router.post("/make",
+                           status_code=status.HTTP_201_CREATED,
+                           response_model=MakeEnvResponseModel)
 async def make(version: str = Body(default="v1"),
                max_episode_steps: int = Body(default=500)) -> JSONResponse:
     env_type = f"{ENV_NAME}-{version}"
@@ -54,10 +60,10 @@ async def make(version: str = Body(default="v1"),
                         content={"message": "OK", "idx": idx})
 
 
-@cliff_walking_router.post("/{idx}/reset")
-async def reset(idx: str,
-                seed: int = Body(default=42),
-                options: dict[str, Any] = Body(default={})) -> JSONResponse:
+@cliff_walking_router.post("/{idx}/reset",
+                           response_model=TimeStepResponse,
+                           status_code=status.HTTP_202_ACCEPTED)
+async def reset(idx: str, reset_ops: RestEnvRequestModel) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -67,7 +73,7 @@ async def reset(idx: str,
                             detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
     try:
-        reset_step = await manager.reset(idx=idx, seed=seed)
+        reset_step = await manager.reset(idx=idx, seed=reset_ops.seed)
 
         observation = reset_step.observation
         step_ = TimeStep(observation=observation,
@@ -85,8 +91,10 @@ async def reset(idx: str,
                                                " Have you called make()?"})
 
 
-@cliff_walking_router.post("/{idx}/step")
-async def step(idx: str, action: int = Body(...)) -> JSONResponse:
+@cliff_walking_router.post("/{idx}/step",
+                           response_model=TimeStepResponse,
+                           status_code=status.HTTP_202_ACCEPTED)
+async def step(idx: str, action: DiscreteAction) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})

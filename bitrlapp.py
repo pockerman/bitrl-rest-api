@@ -28,7 +28,7 @@ if FOUND_GYM_PYBULLET:
 # --------Torchboard---------
 from api.torchboard_api.routes import tensorboard_api_router
 
-from api_config import get_api_config
+from api.api_config import get_api_config
 
 BASE_URL = "/api"
 

@@ -1,8 +1,8 @@
+from __future__ import annotations
 import enum
 import copy
-from typing import Generic, Optional, TypeVar
+from typing import Generic, Optional, TypeVar, Any
 from pydantic import BaseModel, Field, Extra
-import numpy as np
 
 _Reward = TypeVar('_Reward')
 _Discount = TypeVar('_Discount')
@@ -52,6 +52,10 @@ class TimeStep(BaseModel, Generic[_Reward, _Discount, _Observation]):
     @property
     def done(self) -> bool:
         return self.last()
+
+
+class TimeStepResponse(BaseModel):
+    time_step: TimeStep
 
 
 class TimeStepV(BaseModel, Generic[_Reward, _Discount, _Observation]):

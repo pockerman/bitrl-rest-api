@@ -74,4 +74,4 @@ class GymEnvManager:
 
     def is_alive(self, idx: str) -> bool:
         """Check if an environment exists and is active."""
-        return idx in self.envs and self.envs[str] is not None
+        return idx in self.envs and self.envs[idx] is not None

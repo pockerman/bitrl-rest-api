@@ -1,11 +1,12 @@
 import sys
-from typing import Any, Annotated
+from typing import Annotated
 
-from fastapi import APIRouter, Body, status, Depends
+from fastapi import APIRouter, status, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from fastapi import HTTPException
 from loguru import logger
 
+from api.utils.get_env_dynamics_request_model import GetEnvDynmicsRequestModel
+from api.utils.get_env_dynamics_response_model import GetEnvDynmicsResponseModel
 from api.utils.info_response_model import InfoResponseModel
 from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
@@ -156,20 +157,27 @@ async def step(idx: str, action: DiscreteAction,
                         content={"time_step": step_.model_dump()})
 
 
-@frozenlake_router.get("/{idx}/dynamics")
-async def get_dynamics(idx: str, stateId: int, actionId: int = None) -> JSONResponse:
+@frozenlake_router.get("/{idx}/dynamics", response_model=GetEnvDynmicsResponseModel)
+async def get_dynamics(idx: str, dyn_req: Annotated[GetEnvDynmicsRequestModel, Query()],
+                        api_config: Annotated[Config, Depends(get_api_config)],) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
     env = manager.envs[idx]
-    # env = env.unwrapped
-    if actionId is None or actionId < 0:
-        state_dyns = env.unwrapped.P[stateId]
-        return JSONResponse(status_code=status.HTTP_201_CREATED,
+    if dyn_req.action_id is None or dyn_req.action_id < 0:
+        state_dyns = env.unwrapped.P[dyn_req.state_id]
+
+        if api_config.LOG_INFO:
+            logger.info(f'Get dynamics for state={dyn_req.state_id}')
+
+        return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": state_dyns})
 
     else:
-        dynamics = env.unwrapped.P[stateId][actionId]
+        dynamics = env.unwrapped.P[dyn_req.state_id][dyn_req.action_id]
+
+        if api_config.LOG_INFO:
+            logger.info(f'Get dynamics for state={dyn_req.state_id}/action={dyn_req.action_id}')
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": dynamics})

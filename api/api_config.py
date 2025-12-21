@@ -7,5 +7,5 @@ class Config(BaseModel):
     LOG_INFO: bool = True
 
 
-def get_api_config():
+def get_api_config() -> Config:
     return Config()

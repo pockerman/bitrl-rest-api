@@ -41,7 +41,7 @@ async def get_is_alive(idx: str) -> JSONResponse:
                         content={"result": is_alive_})
 
 
-@taxi_router.post("/{idx}/close")
+@taxi_router.post("/{idx}/close", status_code=status.HTTP_202_ACCEPTED)
 async def close(idx: str) -> JSONResponse:
     closed = await manager.close(idx=idx)
 

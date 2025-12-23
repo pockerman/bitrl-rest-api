@@ -115,7 +115,9 @@ async def reset(idx: str, reset_ops: RestEnvRequestModel) -> JSONResponse:
 @cliff_walking_router.post("/{idx}/step",
                            response_model=TimeStepResponse,
                            status_code=status.HTTP_202_ACCEPTED)
-async def step(idx: str, action: DiscreteAction) -> JSONResponse:
+async def step(idx: str,
+               action: DiscreteAction,
+               api_config: Annotated[Config, Depends(get_api_config)]) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
@@ -136,7 +138,8 @@ async def step(idx: str, action: DiscreteAction) -> JSONResponse:
                     info={'prob': float(info['prob'])},
                     discount=1.0)
 
-    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step.model_dump()})
 
@@ -161,9 +164,6 @@ async def get_dynamics(idx: str, dyn_req: Annotated[GetEnvDynmicsRequestModel, Q
 
     else:
         dynamics = env.unwrapped.P[dyn_req.state_id][dyn_req.action_id]
-
-        print(dynamics)
-
         dynamics = [float(item[0]) for item in dynamics]
 
         if api_config.LOG_INFO:

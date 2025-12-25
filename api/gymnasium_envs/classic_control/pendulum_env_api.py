@@ -5,13 +5,19 @@ The action is a ndarray with shape (1,) representing the torque applied to free 
 
 """
 from loguru import logger
-from typing import Any
+from typing import Any, Annotated
 import sys
-from fastapi import APIRouter, Body, status
+from fastapi import APIRouter, Body, status, Depends
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from api.utils.time_step_response import TimeStep, TimeStepType
+
+from api.utils.make_env_request_model import MakeEnvRequestModel
+from api.utils.make_env_response_model import MakeEnvResponseModel
+from api.utils.reset_request_model import RestEnvRequestModel
+from api.utils.spaces.actions import ContinuousAction
+from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
+from api.api_config import get_api_config, Config
 
 pendulum_router = APIRouter(prefix="/gymnasium/pendulum-env",
                             tags=["pendulum-env"])
@@ -23,6 +29,9 @@ manager = GymEnvManager(verbose=True)
 
 # actions that the environment accepts
 ACTIONS_SPACE = [1, ]
+
+DEFAULT_OPTIONS = {"g": 10.0, "max_episode_steps": 200}
+DEFAULT_VERSION = "v1"
 
 
 @pendulum_router.get("/copies")
@@ -56,27 +65,37 @@ async def close(idx: str) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@pendulum_router.post("/{idx}/make")
-async def make(version: str = Body(default="v1"),
-               options: dict[str, Any] = Body(default={"g": 10.0, "max_episode_steps": 200})) -> JSONResponse:
+@pendulum_router.post("/make", status_code=status.HTTP_201_CREATED,
+                      response_model=MakeEnvResponseModel)
+async def make(request: MakeEnvRequestModel,
+               api_config: Annotated[Config, Depends(get_api_config)]) -> JSONResponse:
+    version = request.version or DEFAULT_VERSION
+
+    # merge defaults with user overrides
+    options = DEFAULT_OPTIONS | (request.options or {})
+
     env_type = f"{ENV_NAME}-{version}"
 
     g = options.get("g", 10.0)
     max_episode_steps = options.get("max_episode_steps", 200)
 
+    if api_config.LOG_INFO:
+        logger.info(f'Creating environment  {env_type}')
+
     idx = await manager.make(env_name=env_type,
                              max_episode_steps=max_episode_steps,
                              g=g)
 
-    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Created environment  {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"message": "OK", "idx": idx})
 
 
-@pendulum_router.post("/{idx}/reset")
+@pendulum_router.post("/{idx}/reset", status_code=status.HTTP_202_ACCEPTED,
+                      response_model=TimeStepResponse)
 async def reset(idx: str,
-                seed: int = Body(default=42),
-                options: dict[str, Any] = Body(default={})) -> JSONResponse:
+                reset_ops: RestEnvRequestModel) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -87,7 +106,7 @@ async def reset(idx: str,
                             detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
     try:
-        reset_step = await manager.reset(idx=idx, seed=seed)
+        reset_step = await manager.reset(idx=idx, seed=reset_ops.seed)
 
         observation = reset_step.observation
         observation = [float(val) for val in observation]
@@ -106,17 +125,20 @@ async def reset(idx: str,
                                                " Have you called make()?"})
 
 
-@pendulum_router.post("/{idx}/step")
-async def step(idx: str, action: float = Body(...)) -> JSONResponse:
+@pendulum_router.post("/{idx}/step", status_code=status.HTTP_202_ACCEPTED,
+                      response_model=TimeStepResponse)
+async def step(idx: str, action: ContinuousAction,
+                api_config: Annotated[Config, Depends(get_api_config)]
+               ) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-    if not (-2.0 <= action <= 2.0):
+    if not (-2.0 <= action.action <= 2.0):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Action {action} not in {ACTIONS_SPACE}")
+                            detail=f"Action {action} not in [-2.0, 2.0] range")
 
-    step_result = await manager.step(idx=idx, action=action)
+    step_result = await manager.step(idx=idx, action=[action.action])
 
     step_type = TimeStepType.MID
     if step_result.terminated:
@@ -134,6 +156,7 @@ async def step(idx: str, action: float = Body(...)) -> JSONResponse:
                      info=step_result.info,
                      discount=1.0)
 
-    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step_.model_dump()})

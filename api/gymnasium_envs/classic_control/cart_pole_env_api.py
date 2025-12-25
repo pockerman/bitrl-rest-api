@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from api.utils.make_env_request_model import MakeEnvRequestModel
 from api.utils.make_env_response_model import MakeEnvResponseModel
 from api.utils.reset_request_model import RestEnvRequestModel
-from api.utils.spaces.discrete_action import DiscreteAction
+from api.utils.spaces.actions import DiscreteAction
 from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
 from api.api_config import get_api_config, Config

@@ -11,7 +11,7 @@ from api.utils.get_env_dynamics_response_model import GetEnvDynmicsResponseModel
 from api.utils.make_env_request_model import MakeEnvRequestModel
 from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
-from api.utils.spaces.discrete_action import DiscreteAction
+from api.utils.spaces.actions import DiscreteAction
 from api.utils.reset_request_model import RestEnvRequestModel
 from api.utils.make_env_response_model import MakeEnvResponseModel
 from api.api_config import get_api_config, Config
@@ -158,16 +158,17 @@ async def get_dynamics(idx: str, dyn_req: Annotated[GetEnvDynmicsRequestModel, Q
         if api_config.LOG_INFO:
             logger.info(f'Get dynamics for state={dyn_req.state_id}')
 
-        state_dyns = [int(item) for item in state_dyns]
+        state_dyns = [float(item) for item in state_dyns]
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": state_dyns})
 
     else:
         dynamics = env.unwrapped.P[dyn_req.state_id][dyn_req.action_id]
-        dynamics = [float(item[0]) for item in dynamics]
+        dynamics = [(float(item[0]), int(item[1]), float(item[2]), bool(item[3])) for item in dynamics]
 
         if api_config.LOG_INFO:
             logger.info(f'Get dynamics for state={dyn_req.state_id}/action={dyn_req.action_id}')
+            logger.info(dynamics)
         return JSONResponse(status_code=status.HTTP_200_OK,
                             content={"dynamics": dynamics})
 

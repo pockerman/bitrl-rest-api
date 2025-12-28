@@ -1,11 +1,17 @@
 import sys
-from typing import Any
-from fastapi import APIRouter, Body, status
+from typing import Annotated
+from fastapi import APIRouter, status, Depends
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 from loguru import logger
-from api.utils.time_step_response import TimeStep, TimeStepType
+
+from api.utils.make_env_request_model import MakeEnvRequestModel
+from api.utils.make_env_response_model import MakeEnvResponseModel
+from api.utils.reset_request_model import RestEnvRequestModel
+from api.utils.spaces.actions import DiscreteAction
+from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
+from api.api_config import get_api_config, Config
 
 mountain_car_router = APIRouter(prefix="/gymnasium/mountain-car-env", tags=["mountain-car-env"])
 
@@ -19,6 +25,9 @@ manager = GymEnvManager(verbose=True)
 ACTIONS_SPACE = {0: "Accelerate to the left",
                  1: "Don't accelerate",
                  2: "Accelerate to the right"}
+
+DEFAULT_OPTIONS = {"max_episode_steps": 200}
+DEFAULT_VERSION = "v0"
 
 
 @mountain_car_router.get("/copies")
@@ -53,23 +62,30 @@ async def close(idx: str) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@mountain_car_router.post("/make")
-async def make(version: str = Body(default="v0"),
-               options: dict[str, Any] = Body(default={"max_episode_steps": 200})
+@mountain_car_router.post("/make", status_code=status.HTTP_201_CREATED,
+                          response_model=MakeEnvResponseModel)
+async def make(request: MakeEnvRequestModel,
+               api_config: Annotated[Config, Depends(get_api_config)]
                ) -> JSONResponse:
+    version = request.version or DEFAULT_VERSION
+
+    # merge defaults with user overrides
+    options = DEFAULT_OPTIONS | (request.options or {})
+
     env_type = f"{ENV_NAME}-{version}"
     max_episode_steps = options.get("max_episode_steps", 200)
     idx = await manager.make(env_name=env_type,
                              max_episode_steps=max_episode_steps)
 
-    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Created environment  {env_type} with index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"message": "OK", "idx": idx})
 
 
-@mountain_car_router.post("/{idx}/reset")
-async def reset(idx: str, seed: int = Body(default=42),
-                options: dict[str, Any] = Body(default={})) -> JSONResponse:
+@mountain_car_router.post("/{idx}/reset", status_code=status.HTTP_202_ACCEPTED,
+                          response_model=TimeStepResponse)
+async def reset(idx: str, reset_ops: RestEnvRequestModel) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -80,7 +96,7 @@ async def reset(idx: str, seed: int = Body(default=42),
                             detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
     try:
-        reset_step = await manager.reset(idx=idx, seed=seed)
+        reset_step = await manager.reset(idx=idx, seed=reset_ops.seed)
 
         observation = reset_step.observation
         observation = [float(val) for val in observation]
@@ -99,17 +115,19 @@ async def reset(idx: str, seed: int = Body(default=42),
                                                " Have you called make()?"})
 
 
-@mountain_car_router.post("/{idx}/step")
-async def step(idx: str, action: int = Body(...)) -> JSONResponse:
+@mountain_car_router.post("/{idx}/step", status_code=status.HTTP_202_ACCEPTED,
+                          response_model=TimeStepResponse)
+async def step(idx: str, action: DiscreteAction,
+               api_config: Annotated[Config, Depends(get_api_config)]) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-    if action not in ACTIONS_SPACE:
+    if action.action not in ACTIONS_SPACE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Action {action} not in {list(ACTIONS_SPACE.keys())}")
 
-    step_result = await manager.step(idx=idx, action=action)
+    step_result = await manager.step(idx=idx, action=action.action)
 
     step_type = TimeStepType.MID
     if step_result.terminated:
@@ -127,6 +145,7 @@ async def step(idx: str, action: int = Body(...)) -> JSONResponse:
                      info=step_result.info,
                      discount=1.0)
 
-    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step_.model_dump()})

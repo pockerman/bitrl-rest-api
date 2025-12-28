@@ -3,9 +3,9 @@ for more information check: https://gymnasium.farama.org/environments/classic_co
 
 """
 import sys
-from typing import Any, Annotated
+from typing import Annotated
 from loguru import logger
-from fastapi import APIRouter, Body, status, Depends
+from fastapi import APIRouter, status, Depends
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 

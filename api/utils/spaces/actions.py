@@ -7,3 +7,7 @@ class DiscreteAction(BaseModel):
 
 class ContinuousAction(BaseModel):
     action: float
+
+
+class ContinuousVectorAction(BaseModel):
+    action: list[float]

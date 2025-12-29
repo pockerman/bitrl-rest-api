@@ -3,13 +3,19 @@ for more information check: https://gymnasium.farama.org/environments/classic_co
 
 """
 import sys
-from typing import Any
+from typing import Any, Annotated
 from loguru import logger
-from fastapi import APIRouter, Body, status
+from fastapi import APIRouter, status, Depends
 from fastapi.responses import JSONResponse
 from fastapi import HTTPException
-from api.utils.time_step_response import TimeStep, TimeStepType
+
+from api.utils.make_env_request_model import MakeEnvRequestModel
+from api.utils.make_env_response_model import MakeEnvResponseModel
+from api.utils.reset_request_model import RestEnvRequestModel
+from api.utils.spaces.actions import ContinuousVectorAction
+from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
 from api.utils.gym_env_manager import GymEnvManager
+from api.api_config import get_api_config, Config
 
 lunar_lander_continuous_router = APIRouter(prefix="/gymnasium/lunar-lander-continuous-env",
                                            tags=["Lunar Lander Continuous API"])
@@ -24,6 +30,9 @@ ACTIONS_SPACE = {0: "Main engine throttle — range [-1, 1], where 1 is full thr
                  1: "Side engine throttle — range [-1, 1], controlling left/right orientation.",
                  }
 
+DEFAULT_OPTIONS = {'gravity': -10.0, 'enable_wind': False, 'wind_power': 15.0, 'turbulence_power': 1.5}
+DEFAULT_VERSION = "v3"
+
 
 @lunar_lander_continuous_router.get("/copies")
 async def get_n_copies() -> JSONResponse:
@@ -37,7 +46,7 @@ async def get_action_space() -> JSONResponse:
                         content={"action_space": ACTIONS_SPACE})
 
 
-@lunar_lander_continuous_router.get("/is-alive")
+@lunar_lander_continuous_router.get("/{idx}/is-alive")
 async def get_is_alive(idx: str) -> JSONResponse:
     is_alive_ = manager.is_alive(idx=idx)
     return JSONResponse(status_code=status.HTTP_200_OK,
@@ -56,10 +65,15 @@ async def close(idx: str) -> JSONResponse:
                         content={"message": "FAILED"})
 
 
-@lunar_lander_continuous_router.post("/make")
-async def make(version: str = Body(default="v3"),
-               options: dict[str, Any] = Body(default={'gravity': -10.0, 'enable_wind': False,
-                                                       'wind_power': 15.0, 'turbulence_power': 1.5})) -> JSONResponse:
+@lunar_lander_continuous_router.post("/make", status_code=status.HTTP_201_CREATED,
+                                     response_model=MakeEnvResponseModel)
+async def make(request: MakeEnvRequestModel,
+               api_config: Annotated[Config, Depends(get_api_config)]) -> JSONResponse:
+    version = request.version or DEFAULT_VERSION
+
+    # merge defaults with user overrides
+    options = DEFAULT_OPTIONS | (request.options or {})
+
     if version == 'v1' or version == 'v2':
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail='Environment version v1 for `LunarLander` '
@@ -70,14 +84,15 @@ async def make(version: str = Body(default="v3"),
     options['continuous'] = True
     idx = await manager.make(env_name=env_type, **options)
 
-    logger.info(f'Created environment  {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Created environment  {env_type} with index {idx}')
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content={"message": "OK", "idx": idx})
 
 
-@lunar_lander_continuous_router.post("/{idx}/reset")
-async def reset(idx: str, seed: int = Body(default=42),
-                options: dict[str, Any] = Body(default={})) -> JSONResponse:
+@lunar_lander_continuous_router.post("/{idx}/reset", status_code=status.HTTP_202_ACCEPTED,
+                                     response_model=TimeStepResponse)
+async def reset(idx: str, reset_ops: RestEnvRequestModel) -> JSONResponse:
     """Reset the environment
 
     :return:
@@ -88,7 +103,7 @@ async def reset(idx: str, seed: int = Body(default=42),
                             detail={"message": "NOT_ALIVE/NOT_CREATED"})
 
     try:
-        reset_step = await manager.reset(idx=idx, seed=seed)
+        reset_step = await manager.reset(idx=idx, seed=reset_ops.seed)
 
         observation = reset_step.observation
         observation = [float(val) for val in observation]
@@ -107,17 +122,19 @@ async def reset(idx: str, seed: int = Body(default=42),
                                                " Have you called make()?"})
 
 
-@lunar_lander_continuous_router.post("/{idx}/step")
-async def step(idx: str, action: list[float] = Body(...)) -> JSONResponse:
+@lunar_lander_continuous_router.post("/{idx}/step", status_code=status.HTTP_202_ACCEPTED,
+                                     response_model=TimeStepResponse)
+async def step(idx: str, action: ContinuousVectorAction,
+               api_config: Annotated[Config, Depends(get_api_config)]) -> JSONResponse:
     if idx not in manager:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail={"message": "NOT_ALIVE/NOT_CREATED. Call make/reset"})
 
-    if len(action) != len(ACTIONS_SPACE):
+    if len(action.action) != len(ACTIONS_SPACE):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Action vector size {len(action)} != 2")
+                            detail=f"Action vector size {len(action.action)} != 2")
 
-    step_result = await manager.step(idx=idx, action=action)
+    step_result = await manager.step(idx=idx, action=action.action)
 
     step_type = TimeStepType.MID
     if step_result.terminated:
@@ -135,6 +152,7 @@ async def step(idx: str, action: list[float] = Body(...)) -> JSONResponse:
                      info=step_result.info,
                      discount=1.0)
 
-    logger.info(f'Step in environment {ENV_NAME} and index {idx}')
+    if api_config.LOG_INFO:
+        logger.info(f'Step in environment {ENV_NAME} and index {idx}')
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
                         content={"time_step": step_.model_dump()})

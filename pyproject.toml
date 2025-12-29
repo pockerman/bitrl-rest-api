@@ -7,9 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.121.0",
     "fastapi-cli>=0.0.14",
-    "gymnasium>=1.2.2",
+    "gymnasium[box2d]>=1.2.2",
     "loguru>=0.7.3",
     "six>=1.17.0",
+    "swig>=4.4.1",
     "tensorboard>=2.20.0",
     "torch>=2.9.1",
 ]

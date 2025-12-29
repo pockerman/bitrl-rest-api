@@ -13,9 +13,11 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev swig \
     gcc libgl1 libglib2.0-0 curl && \
     rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && apt-get install -y swig python3-dev
+
 
 # Install uv (https://docs.astral.sh/uv)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh

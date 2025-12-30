@@ -2,14 +2,14 @@
 this is a copy verbatim of the code in that repository
 
 """
-import sys
+
 import numpy as np
 from six import StringIO
-from string import ascii_uppercase
+
 from typing import Optional
 
 import gymnasium as gym
-from gymnasium import spaces, utils
+from gymnasium import spaces
 from gymnasium.envs.toy_text.utils import categorical_sample
 
 WEST, EAST = 0, 1
@@ -59,7 +59,7 @@ class WalkEnv(gym.Env):
 
         self.s = categorical_sample(self.isd, self.np_random)
 
-    def step(self, action: int):
+    def step(self, action: int) -> tuple[int, float, bool, dict]:
         transitions = self.P[self.s][action]
         i = categorical_sample([t[0] for t in transitions], self.np_random)
         p, s, r, d = transitions[i]
@@ -75,14 +75,16 @@ class WalkEnv(gym.Env):
         self.lastaction = None
         return int(self.s)
 
-    def render(self, mode='human', close=False) -> None:
-        outfile = StringIO() if mode == 'ansi' else sys.stdout
-        desc = np.asarray(['[' + ascii_uppercase[:self.shape[1] - 2] + ']'], dtype='c').tolist()
-        desc = [[c.decode('utf-8') for c in line] for line in desc]
-        color = 'red' if self.s == 0 else 'green' if self.s == self.nS - 1 else 'yellow'
-        desc[0][self.s] = utils.colorize(desc[0][self.s], color, highlight=True)
-        outfile.write("\n")
-        outfile.write("\n".join(''.join(line) for line in desc) + "\n")
-
-        if mode != 'human':
-            return outfile
+    # def render(self, mode='human', close=False) -> None:
+    #     outfile = StringIO() if mode == 'ansi' else sys.stdout
+    #     desc = np.asarray(['[' + ascii_uppercase[:self.shape[1] - 2] + ']'], dtype='c').tolist()
+    #     desc = [[c.decode('utf-8') for c in line] for line in desc]
+    #     color = 'red' if self.s == 0 else 'green' if self.s == self.nS - 1 else 'yellow'
+    #     desc[0][self.s] = utils.colorize(desc[0][self.s], color, highlight=True)
+    #     outfile.write("\n")
+    #     outfile.write("\n".join(''.join(line) for line in desc) + "\n")
+    #
+    #     if mode != 'human':
+    #         return outfile
+    def close(self) -> None:
+        super().close()

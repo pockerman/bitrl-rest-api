@@ -9,11 +9,12 @@ from api.utils.get_env_dynamics_request_model import GetEnvDynmicsRequestModel
 from api.utils.get_env_dynamics_response_model import GetEnvDynmicsResponseModel
 from api.utils.info_response_model import InfoResponseModel
 from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
-from api.utils.gym_env_manager import GymEnvManager
 from api.utils.spaces.actions import DiscreteAction
 from api.utils.make_env_response_model import MakeEnvResponseModel
 from api.utils.reset_request_model import RestEnvRequestModel
 from api.utils.make_env_request_model import MakeEnvRequestModel
+from api.gymnasium_envs.gym_env_manager import GymEnvManager
+
 from api.api_config import get_api_config, Config
 
 frozenlake_router = APIRouter(prefix="/gymnasium/frozen-lake-env", tags=["frozen-lake-env"])

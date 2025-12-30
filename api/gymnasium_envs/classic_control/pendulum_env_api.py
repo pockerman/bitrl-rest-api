@@ -16,7 +16,7 @@ from api.utils.make_env_response_model import MakeEnvResponseModel
 from api.utils.reset_request_model import RestEnvRequestModel
 from api.utils.spaces.actions import ContinuousAction
 from api.utils.time_step_response import TimeStep, TimeStepType, TimeStepResponse
-from api.utils.gym_env_manager import GymEnvManager
+from api.gymnasium_envs.gym_env_manager import GymEnvManager
 from api.api_config import get_api_config, Config
 
 pendulum_router = APIRouter(prefix="/gymnasium/pendulum-env",
